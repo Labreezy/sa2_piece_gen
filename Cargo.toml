@@ -1,0 +1,16 @@
+[package]
+name = "sa2_piece_gen"
+version = "0.1.0"
+authors = ["Isaac Lozano <Isaac-Lozano@users.noreply.github.com>"]
+edition = "2018"
+
+[dependencies]
+sa2_set = {git = "https://github.com/Isaac-Lozano/setr"}
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+csv = "1.0"
+byteorder = "1.0"
+sa2_text = {git = "https://github.com/Isaac-Lozano/SA2-utils"}
+prs_util = {git = "https://github.com/Isaac-Lozano/SA2-utils"}
+process_reader = {git = "https://github.com/Isaac-Lozano/process_reader"}
