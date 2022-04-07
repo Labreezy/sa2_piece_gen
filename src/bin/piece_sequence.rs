@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::File;
 use std::marker::PhantomData;
+use std::u16;
 
 use sa2_piece_gen::rng::Rng;
 use sa2_piece_gen::emerald_manager::EmeraldManager;
@@ -47,18 +48,25 @@ fn main() {
     let mut args = env::args().skip(1);
     let platform = args.next().unwrap();
     let input_filename = args.next().unwrap();
+    let p1_string = args.next().unwrap();
+    let p2_string = args.next().unwrap();
+    let p3_string = args.next().unwrap();
+
+    let p1_id = u16::from_str_radix(&p1_string, 16).unwrap();
+    let p2_id = u16::from_str_radix(&p2_string, 16).unwrap();
+    let p3_id = u16::from_str_radix(&p3_string, 16).unwrap();
 
     let input = File::open(input_filename).unwrap();
     let spec: StageSpec = serde_json::from_reader(input).unwrap();
 
     match platform.as_str() {
-        "pc" => piece_sequence::<Pc>(spec),
-        "gc" => piece_sequence::<Gc>(spec),
+        "pc" => piece_sequence::<Pc>(spec, p1_id, p2_id, p3_id),
+        "gc" => piece_sequence::<Gc>(spec, p1_id, p2_id, p3_id),
         _ => unimplemented!(),
     }
 }
 
-fn piece_sequence<P>(spec: StageSpec)
+fn piece_sequence<P>(spec: StageSpec, p1_id: u16, p2_id: u16, p3_id: u16)
     where P: Platform,
 {
     let r_iter: RngIterator<P> = RngIterator::new(0);
@@ -68,8 +76,8 @@ fn piece_sequence<P>(spec: StageSpec)
         let mut em = EmeraldManager::from_spec::<P>(spec.clone());
         em.r = r;
         em.gen_pieces::<P>();
-        //if em.p1.id == 0x0301 && em.p2.id == 0x0007 && em.p3.id == 0x0807 {
-        if em.p1.id == 0x010C && em.p2.id == 0x0503 && em.p3.id == 0x0806 {
+
+        if em.p1.id == p1_id && em.p2.id == p2_id && em.p3.id == p3_id {
             println!("{:04}: {:04X} {:04X} {:04X}", idx, em.p1.id, em.p2.id, em.p3.id);
             println!("Rng state: 0x{:08X}", r_copy.get_state());
             println!();
