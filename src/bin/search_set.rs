@@ -1,9 +1,7 @@
 use std::env;
-use std::error::Error;
 use std::fs::File;
 use std::marker::PhantomData;
 use std::num::ParseIntError;
-use std::process;
 use std::u16;
 
 use getopts::Options;
@@ -71,7 +69,14 @@ impl PieceConstraint {
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage {} -p PLATFORM -s STAGE [OPTIONS] P1 P2 P3", program);
-    print!("{}", opts.usage(&brief));
+    println!("{}", opts.usage(&brief));
+    println!();
+    println!("Pieces must be in hexadecimal format, major ID first.");
+    println!();
+    println!("Piece ID format (using 0x0A03 as an example):");
+    println!("0A03    Find a set that has piece 0x0A03 in that slot");
+    println!("G0A03   Mark that a given slot had piece 0x0A03 grabbed in the previous life");
+    println!("X       Don't care. Any piece may show up and it counts as a match");
 }
 
 fn main() {
