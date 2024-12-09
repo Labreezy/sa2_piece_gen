@@ -47,6 +47,21 @@ impl<P> Iterator for RngIterator<P>
 enum PieceConstraint {
     Want(u16),
     GrabbedId(u16),
+    DontCare,
+}
+
+impl PieceConstraint {
+    fn from_str(s: &str) -> PieceConstraint {
+        if s.starts_with('G') {
+            PieceConstraint::GrabbedId(u16::from_str_radix(s.strip_prefix('G').unwrap(), 16).unwrap())
+        }
+        else if s == "X" {
+            PieceConstraint::DontCare
+        }
+        else {
+            PieceConstraint::Want(u16::from_str_radix(&s, 16).unwrap())
+        }
+    }
 }
 
 fn main() {
@@ -57,26 +72,9 @@ fn main() {
     let p2_string = args.next().unwrap();
     let p3_string = args.next().unwrap();
 
-    let p1_id = if p1_string.starts_with('G') {
-        PieceConstraint::GrabbedId(u16::from_str_radix(p1_string.strip_prefix('G').unwrap(), 16).unwrap())
-    }
-    else {
-        PieceConstraint::Want(u16::from_str_radix(&p1_string, 16).unwrap())
-    };
-
-    let p2_id = if p2_string.starts_with('G') {
-        PieceConstraint::GrabbedId(u16::from_str_radix(p2_string.strip_prefix('G').unwrap(), 16).unwrap())
-    }
-    else {
-        PieceConstraint::Want(u16::from_str_radix(&p2_string, 16).unwrap())
-    };
-
-    let p3_id = if p3_string.starts_with('G') {
-        PieceConstraint::GrabbedId(u16::from_str_radix(p3_string.strip_prefix('G').unwrap(), 16).unwrap())
-    }
-    else {
-        PieceConstraint::Want(u16::from_str_radix(&p3_string, 16).unwrap())
-    };
+    let p1_id = PieceConstraint::from_str(&p1_string);
+    let p2_id = PieceConstraint::from_str(&p2_string);
+    let p3_id = PieceConstraint::from_str(&p3_string);
 
     let input = File::open(input_filename).unwrap();
     let spec: StageSpec = serde_json::from_reader(input).unwrap();
@@ -93,50 +91,43 @@ fn piece_sequence<P>(spec: StageSpec, p1: PieceConstraint, p2: PieceConstraint, 
 {
     let r_iter: RngIterator<P> = RngIterator::new(0);
 
-//    match p1 {
-//        PieceConstraint::Want(id) => println!("{:#?}", spec.get_emerald_by_id(id)),
-//        PieceConstraint::GrabbedId(id) => println!("{:#?}", spec.get_emerald_by_id(id)),
-//        _ => unimplemented!(),
-//    }
-
     for (idx, r) in r_iter.enumerate() {
         let r_copy = r;
         let mut em = EmeraldManager::from_spec::<P>(spec.clone());
 
-        let p1_id = match p1 {
-            PieceConstraint::Want(id) => id,
-            PieceConstraint::GrabbedId(id) => {
-                em.p1 = spec.get_emerald_by_id(id).unwrap();
-                em.p1.id = 0xFE00;
-                0xFE00
-            }
-        };
+        if let PieceConstraint::GrabbedId(id) = p1 {
+            em.p1 = spec.get_emerald_by_id(id).unwrap();
+            em.p1.id = 0xFE00;
+        }
 
-        let p2_id = match p2 {
-            PieceConstraint::Want(id) => id,
-            PieceConstraint::GrabbedId(id) => {
-                em.p2 = spec.get_emerald_by_id(id).unwrap();
-                em.p2.id = 0xFE00;
-                0xFE00
-            }
-        };
+        if let PieceConstraint::GrabbedId(id) = p2 {
+            em.p2 = spec.get_emerald_by_id(id).unwrap();
+            em.p2.id = 0xFE00;
+        }
 
-        let p3_id = match p3 {
-            PieceConstraint::Want(id) => id,
-            PieceConstraint::GrabbedId(id) => {
-                em.p3 = spec.get_emerald_by_id(id).unwrap();
-                em.p3.id = 0xFE00;
-                0xFE00
-            }
-        };
+        if let PieceConstraint::GrabbedId(id) = p3 {
+            em.p3 = spec.get_emerald_by_id(id).unwrap();
+            em.p3.id = 0xFE00;
+        }
 
         em.r = r;
         em.gen_pieces::<P>();
 
-//        println!("{:#?}", em);
-//        println!("{:#?}", r_copy);
+        let mut matched = true;
 
-        if em.p1.id == p1_id && em.p2.id == p2_id && em.p3.id == p3_id {
+        if let PieceConstraint::Want(id) = p1 {
+            matched = matched && (em.p1.id == id);
+        }
+
+        if let PieceConstraint::Want(id) = p2 {
+            matched = matched && (em.p2.id == id);
+        }
+
+        if let PieceConstraint::Want(id) = p3 {
+            matched = matched && (em.p3.id == id);
+        }
+
+        if matched {
             println!("{:04}: {:04X} {:04X} {:04X}", idx, em.p1.id, em.p2.id, em.p3.id);
             println!("Rng state: 0x{:08X}", r_copy.get_state());
             println!();
