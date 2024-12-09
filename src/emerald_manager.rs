@@ -212,68 +212,51 @@ impl EmeraldManager {
     pub fn gen_pieces<P>(&mut self)
         where P: Platform,
     {
-        let num_p1 = self.slot1_pieces.len() + self.enemy_pieces.len();
-//        println!("num_p1: {} + {} = {}", self.slot1_pieces.len(), self.enemy_pieces.len(), num_p1);
+        // Generate piece 1
+        if self.p1.id != 0xFE00 {
+            let num_p1 = self.slot1_pieces.len() + self.enemy_pieces.len();
 
-        let p1_index = ((self.r.gen_val::<P::Consts>() as f32 / 32768.0) * num_p1 as f32) as usize;
-//        println!("index: {}", p1_index);
+            let p1_index = ((self.r.gen_val::<P::Consts>() as f32 / 32768.0) * num_p1 as f32) as usize;
 
-        self.p1 = if p1_index < self.slot1_pieces.len() {
-            self.slot1_pieces[p1_index]
+            self.p1 = if p1_index < self.slot1_pieces.len() {
+                self.slot1_pieces[p1_index]
+            }
+            else {
+                self.enemy_pieces.swap_remove(p1_index - self.slot1_pieces.len())
+            };
         }
-        else {
-            self.enemy_pieces.swap_remove(p1_index - self.slot1_pieces.len())
-        };
 
         // Generate piece 2
-        let mut potential_p2: Vec<_> = self.slot2_pieces.iter().chain(self.enemy_pieces.iter()).collect();
+        if self.p2.id != 0xFE00 {
+            let mut potential_p2: Vec<_> = self.slot2_pieces.iter().chain(self.enemy_pieces.iter()).collect();
 
-//        for (idx, p) in potential_p2.iter().enumerate() {
-//            println!("pre[{:02X}]: {:04X}", idx, p.id);
-//        }
+            potential_p2.sort_by_key(|p| F32Cmp(p.position.distance::<P::Math>(self.p1.position)));
 
-        potential_p2.sort_by_key(|p| F32Cmp(p.position.distance::<P::SquareRoot>(self.p1.position)));
-//        println!();
+            let num_p2 = self.slot2_pieces.len() + self.enemy_pieces.len();
 
-//        for (idx, p) in potential_p2.iter().enumerate() {
-//            println!("sort[{:02X}]: {:04X} ({})", idx, p.id, p.position.distance(self.p1.position));
-//        }
+            let mut p2_index = (num_p2 as f32 - (((self.r.gen_val::<P::Consts>() as f32 / 32768.0) * num_p2 as f32) / 2.0)) as usize;
+            if p2_index >= num_p2 {
+                p2_index -= 1;
+            }
 
-        let num_p2 = self.slot2_pieces.len() + self.enemy_pieces.len();
-//        println!("num_p2: {}", num_p2);
-
-        let mut p2_index = (num_p2 as f32 - (((self.r.gen_val::<P::Consts>() as f32 / 32768.0) * num_p2 as f32) / 2.0)) as usize;
-        if p2_index >= num_p2 {
-            p2_index -= 1;
+            self.p2 = *potential_p2[p2_index];
         }
-//        println!("index: {}", p2_index);
-        self.p2 = *potential_p2[p2_index];
 
         // Generate piece 3
-        let mut potential_p3: Vec<_> = self.slot3_pieces.iter().collect();
+        if self.p3.id != 0xFE00 {
+            let mut potential_p3: Vec<_> = self.slot3_pieces.iter().collect();
 
-//        for (idx, p) in potential_p3.iter().enumerate() {
-//            println!("pre[{:02X}]: {:04X}", idx, p.id);
-//        }
+            potential_p3.sort_by_key(|p| F32Cmp((p.position - self.p2.position).cross::<P::Math>(p.position - self.p1.position).magnitude::<P::Math>()));
 
-        potential_p3.sort_by_key(|p| F32Cmp((p.position - self.p2.position).cross(p.position - self.p1.position).magnitude::<P::SquareRoot>()));
+            let num_p3 = self.slot3_pieces.len();
+            let rand_val = self.r.gen_val::<P::Consts>();
+            let mut p3_index = (num_p3 as f32 - (((rand_val as f32 / 32768.0) * num_p3 as f32) / 2.0)) as usize;
 
-        let mut r_copy = self.r;
-        let num_p3 = self.slot3_pieces.len();
-        let mut p3_index = (num_p3 as f32 - (((self.r.gen_val::<P::Consts>() as f32 / 32768.0) * num_p3 as f32) / 2.0)) as usize;
-
-//        if frame == 233 {
-//            for (idx, p) in potential_p3.iter().enumerate() {
-//                println!("sort[{:02X}]: {:04X} ({})", idx, p.id, (p.position - self.p2.position).cross(p.position - self.p1.position).magnitude());
-//            }
-//            let val = r_copy.gen_val();
-//            println!("{} {} {} {}", val, num_p3, (val as f32 / 32768.0), num_p3 as f32 - ((val as f32 / 32768.0) * num_p3 as f32) / 2.0);
-//            println!("p3_index: {}", p3_index);
-//        }
-        if p3_index >= num_p3 {
-            p3_index -= 1;
+            if p3_index >= num_p3 {
+                p3_index -= 1;
+            }
+            self.p3 = *potential_p3[p3_index];
         }
-        self.p3 = *potential_p3[p3_index];
     }
 
     pub fn gen_pieces_full<P>(&mut self, frame: u32)

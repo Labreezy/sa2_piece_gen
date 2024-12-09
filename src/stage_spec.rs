@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom};
 use std::path::Path;
 
 use serde_derive::{Serialize, Deserialize};
@@ -156,5 +156,33 @@ impl StageSpec {
             enemy_pieces: en_list,
             pre_calls: calls,
         }
+    }
+
+    pub fn get_emerald_by_id(&self, id: u16) -> Option<Emerald> {
+        for piece in &self.slot1_pieces {
+            if piece.id == id {
+                return Some(*piece);
+            }
+        }
+
+        for piece in &self.slot2_pieces {
+            if piece.id == id {
+                return Some(*piece);
+            }
+        }
+
+        for piece in &self.slot3_pieces {
+            if piece.id == id {
+                return Some(*piece);
+            }
+        }
+
+        for piece in &self.enemy_pieces {
+            if piece.id == id {
+                return Some(*piece);
+            }
+        }
+
+        None
     }
 }

@@ -14,3 +14,4 @@ byteorder = "1.0"
 sa2_text = {git = "https://github.com/Isaac-Lozano/SA2-utils"}
 prs_util = {git = "https://github.com/Isaac-Lozano/SA2-utils"}
 process_reader = {git = "https://github.com/Isaac-Lozano/process_reader"}
+getopts = "0.2"

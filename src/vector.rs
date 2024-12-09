@@ -1,5 +1,5 @@
 use std::ops::Sub;
-use std::mem;
+use std::num::Wrapping;
 use std::f64;
 use std::f32;
 
@@ -49,19 +49,19 @@ const FRES_EXPECTED: [BaseAndDec; 32] = [
     BaseAndDec{base: 0x041c00, dec: 0x108}, BaseAndDec{base: 0x020c00, dec: 0x106},
 ];
 
-pub trait Sqrt {
+pub trait PlatformMath {
     fn sqrt(val: f32) -> f32;
+    fn cross(v1: Vector, v2: Vector) -> Vector;
+    fn magnitude(v: Vector) -> f32;
 }
 
 pub struct GcFp;
 
 impl GcFp {
-    fn frsqrte(val: f64) -> f64 {
-        let integral: u64 = unsafe {
-            mem::transmute(val)
-        };
+    pub fn frsqrte(val: f64) -> f64 {
+        let integral = val.to_bits();
         let sign = integral & (1 << 63);
-        let exponent = integral & (0x7FF << 52);
+        let mut exponent = integral & (0x7FFu64 << 52);
         let mantissa = integral & ((1 << 52) - 1);
 
         if exponent == 0 && mantissa == 0 {
@@ -89,94 +89,109 @@ impl GcFp {
             return f64::NAN;
         }
 
-        let sqrt_exponent = ((0x3FF << 52) - ((exponent - (0x3FF << 52)) / 2)) & (0x7FF << 52);
-        let mut sqrt = sign | sqrt_exponent;
+        // Get exponent LSB before we modify it
+        let exponent_lsb = exponent & (1 << 52) ^ (1 << 52);
 
-        let i = mantissa >> 37;
-        let index = (i >> 11) + if exponent & (1 << 52) != 0 { 16 } else { 0 };
-        let entry = FRSQRTE_EXPECTED[index as usize];
-        sqrt |= ((entry.base - entry.dec * (i as u32 % 2048)) as u64) << 26;
+        // Divide exponent by 2?
+        exponent = (Wrapping(0x3FF << 52) - Wrapping((Wrapping(exponent) - Wrapping(0x3FE << 52)).0 / 2)).0 & (0x7FF << 52);
 
-        unsafe {
-            mem::transmute(sqrt)
+        // Get entry in lerp table
+        let idx = (exponent_lsb | mantissa) >> 37;
+        let entry = FRSQRTE_EXPECTED[(idx / 2048) as usize];
+
+        // Start making the result since we already have the sign/exponent
+        let mut sqrt = sign | exponent;
+
+        // Interpolate from base to next entry using dec(lination?) as the slope
+        sqrt |= ((entry.base - entry.dec * (idx as u32 % 2048)) as u64) << 26;
+
+        f64::from_bits(sqrt)
+    }
+
+    pub fn fres(val: f64) -> f64 {
+        let integral = val.to_bits();
+        let sign = integral & (1 << 63);
+        let mut exponent = integral & (0x7FFu64 << 52);
+        let mantissa = integral & ((1 << 52) - 1);
+
+        if exponent == 0 && mantissa == 0 {
+            if sign == 0 {
+                return f64::INFINITY;
+            }
+            else {
+                return f64::NEG_INFINITY;
+            }
+        }
+
+        if exponent < (895 << 52) {
+            return f64::MAX;
+        }
+
+        if exponent >= (1149 << 52) {
+            return 0.0f64;
+        }
+
+        // Negate exponent
+        exponent = (0x7FD << 52) - exponent;
+
+        // Get entry in lerp table
+        let idx = mantissa >> 37;
+        let entry = FRES_EXPECTED[(idx / 1024) as usize];
+
+        // Start making the result since we already have the sign/exponent
+        let mut inv = sign | exponent;
+
+        // Interpolate from base to next entry using dec(lination?) as the slope
+        inv |= ((entry.base - (entry.dec * (idx as u32 % 1024) + 1) / 2) as u64) << 29;
+
+        f64::from_bits(inv)
+    }
+
+    pub fn fmuls(a: f32, c: f32) -> f32 {
+        (a as f64 * c as f64) as f32
+    }
+
+    fn fmadds(a: f32, c: f32, b: f32) -> f32 {
+        (a as f64 * c as f64 + b as f64) as f32
+    }
+}
+
+impl PlatformMath for GcFp {
+    fn sqrt(val: f32) -> f32 {
+        Self::fres(Self::frsqrte(val as f64)) as f32
+    }
+
+    fn cross(v1: Vector, v2: Vector) -> Vector {
+        Vector {
+            x: Self::fmadds(v2.z, v1.y, -Self::fmuls(v2.y, v1.z)),
+            y: Self::fmadds(v2.x, v1.z, -Self::fmuls(v2.z, v1.x)),
+            z: Self::fmadds(v2.y, v1.x, -Self::fmuls(v2.x, v1.y)),
         }
     }
 
-    fn fres(val: f64) -> f64 {
-        1.0 / val
-    }
-
-//    fn fres(val: f64) -> f64 {
-//        let integral: u64 = unsafe {
-//            mem::transmute(val)
-//        };
-//        let sign = integral & (1 << 63);
-//        let exponent = integral & (0x7FF << 52);
-//        let mantissa = integral & ((1 << 52) - 1);
-//
-//        if exponent == 0 && mantissa == 0 {
-//            if sign == 0 {
-//                return f64::INFINITY;
-//            }
-//            else {
-//                return f64::NEG_INFINITY;
-//            }
-//        }
-//
-//        if exponent == (0x7FF << 52) {
-//            if mantissa == 0 {
-//                if sign == 0 {
-//                    return 0.0;
-//                }
-//                else {
-//                    return -0.0;
-//                }
-//            }
-//            return 0.0 + val;
-//        }
-//
-//        if exponent < 895 << 52 {
-//            if sign == 0 {
-//                return f64::MAX;
-//            }
-//            else {
-//                return f64::MIN;
-//            }
-//        }
-//
-//        if exponent >= 1149 << 52 {
-//            if sign == 0 {
-//                return 0.0;
-//            }
-//            else {
-//                return -0.0;
-//            }
-//        }
-//
-//        let reciprocal_exponent = (0x7FD << 52) - exponent;
-//
-//        let i = mantissa >> 37;
-//        let entry = FRES_EXPECTED[(i >> 10) as usize];
-//        let mut reciprocal = sign | reciprocal_exponent;
-//        reciprocal |= ((entry.base - (entry.dec * (i as u32 % 1024) + 1)) as u64 / 2) << 29;
-//
-//        unsafe {
-//            mem::transmute(reciprocal)
-//        }
-//    }
-}
-
-impl Sqrt for GcFp {
-    fn sqrt(val: f32) -> f32 {
-        Self::fres(Self::frsqrte(val as f64)) as f32
+    fn magnitude(v: Vector) -> f32 {
+        let sum_square = Self::fmuls(v.x, v.x) as f64 + v.y as f64 * v.y as f64 + v.z as f64 * v.z as f64;
+        Self::fres(Self::frsqrte(sum_square)) as f32
     }
 }
 
 pub struct PcFp;
 
-impl Sqrt for PcFp {
+impl PlatformMath for PcFp {
     fn sqrt(val: f32) -> f32 {
         val.sqrt()
+    }
+
+    fn cross(v1: Vector, v2: Vector) -> Vector {
+        Vector {
+            x: v1.y * v2.z - v1.z * v2.y,
+            y: v1.z * v2.x - v1.x * v2.z,
+            z: v1.x * v2.y - v1.y * v2.x,
+        }
+    }
+
+    fn magnitude(v: Vector) -> f32 {
+        Self::sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
     }
 }
 
@@ -196,22 +211,20 @@ impl Vector {
         }
     }
 
-    pub fn cross(self, other: Vector) -> Vector {
-        Vector {
-            x: self.y * other.z - self.z * other.y,
-            y: self.z * other.x - self.x * other.z,
-            z: self.x * other.y - self.y * other.x,
-        }
+    pub fn cross<F>(self, other: Vector) -> Vector 
+        where F: PlatformMath,
+    {
+        F::cross(self, other)
     }
 
     pub fn magnitude<F>(self) -> f32
-        where F: Sqrt,
+        where F: PlatformMath,
     {
-        F::sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
+        F::magnitude(self)
     }
 
     pub fn distance<F>(self, other: Vector) -> f32
-        where F: Sqrt,
+        where F: PlatformMath,
     {
         let diff = self - other;
         let dist_squ = diff.x * diff.x + diff.y * diff.y + diff.z * diff.z;
@@ -243,5 +256,35 @@ impl Sub<Vector> for Vector {
             y: self.y - other.y,
             z: self.z - other.z,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_fn_f64_eq_from_bits<F>(func: F, input: u64, output: u64)
+    where
+        F: Fn(f64) -> f64,
+    {
+        assert_eq!(func(f64::from_bits(input)).to_bits(), output);
+    }
+
+    #[test]
+    fn test_frsqrte() {
+        test_fn_f64_eq_from_bits(GcFp::frsqrte, 0x3ea8792d45540000, 0x40924c1090000000);
+        test_fn_f64_eq_from_bits(GcFp::frsqrte, 0x3f00293b64599c80, 0x406683d560000000);
+        test_fn_f64_eq_from_bits(GcFp::frsqrte, 0x0000000000000000, 0x7ff0000000000000);
+        test_fn_f64_eq_from_bits(GcFp::frsqrte, 0x3ef4d01b63e44000, 0x406c0ed800000000);
+        test_fn_f64_eq_from_bits(GcFp::frsqrte, 0x3e6b34191b000000, 0x40b15a8c80000000);
+    }
+
+    #[test]
+    fn test_fres() {
+        test_fn_f64_eq_from_bits(GcFp::fres, 0x40b15a8c80000000, 0x3f2d8186c0000000);
+        test_fn_f64_eq_from_bits(GcFp::fres, 0x7ff0000000000000, 0x0000000000000000);
+        test_fn_f64_eq_from_bits(GcFp::fres, 0x408103dcfc000000, 0x3f5e16cc20000000);
+        test_fn_f64_eq_from_bits(GcFp::fres, 0x4059e10cb8000000, 0x3f83c8ea80000000);
+        test_fn_f64_eq_from_bits(GcFp::fres, 0x4054ca52ec000000, 0x3f88a0eee0000000);
     }
 }
