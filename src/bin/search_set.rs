@@ -79,8 +79,8 @@ fn main() {
     let program = args[0].as_str();
 
     let mut opts = Options::new();
-    opts.reqopt("p", "platform", "set platform to simulate", "PLATFORM");
-    opts.reqopt("s", "stage", "set stage-spec file", "STAGE");
+    opts.optopt("p", "platform", "set platform to simulate", "PLATFORM");
+    opts.optopt("s", "stage", "set stage-spec file", "STAGE");
     opts.optopt("b", "begin", "set initial RNG call amount (default 0)", "RNG_CALLS");
     opts.optopt("e", "end", "set final RNG call amount (default infinity)", "RNG_CALLS");
     opts.optflag("h", "help", "print this help menu");
@@ -92,8 +92,8 @@ fn main() {
         return;
     }
 
-    let platform = matches.opt_str("p").unwrap();
-    let input_filename = matches.opt_str("s").unwrap();
+    let platform = matches.opt_str("p").expect("Option missing: Platform (-p)");
+    let input_filename = matches.opt_str("s").expect("Option missing: Stage (-s)");
     let begin = matches.opt_get("b").expect("Error parsing begin value");
     let end = matches.opt_get("e").expect("Error parsing end value");
 
