@@ -136,7 +136,7 @@ impl StageSpec {
 
             pieces
         };
-
+    
         let p1_list = read_list(p1_addr as u64, num_p1);
         let p2_list = read_list(p2_addr as u64, num_p2);
         let p3_list = read_list(p3_addr as u64, num_p3);
@@ -158,6 +158,64 @@ impl StageSpec {
         }
     }
 
+    pub fn from_set_bin<A>(filename: A) -> StageSpec
+        where A: AsRef<Path>
+        {
+            let mut file = File::open(filename).unwrap();
+            let n_objects = file.read_u32::<BE>().unwrap();
+            file.seek(SeekFrom::Start(0x20)).unwrap();
+            let mut p1_list: Vec<Emerald> = Vec::new();
+            let mut p2_list: Vec<Emerald> = Vec::new();
+            let mut p3_list: Vec<Emerald> = Vec::new();
+            let mut pe_list: Vec<Emerald> = Vec::new();
+            for i in 0..n_objects {
+                let object_pos: u32 = (i+1)*0x20;
+                println!("Object start: {object_pos:X}");
+                file.seek(SeekFrom::Start(object_pos.into())).unwrap();
+                let object_id = file.read_u16::<BE>().unwrap();
+                if object_id != 0xF {
+                    continue;
+                }
+                
+                
+                let major_id = file.read_u8().unwrap();
+                let minor_id = file.read_u8().unwrap();
+                let piece_id: u16 = (u16::from(major_id) << 8) + u16::from(minor_id);
+                file.seek(SeekFrom::Current(4)).unwrap();
+                let xpos = file.read_f32::<BE>().unwrap();
+                let ypos = file.read_f32::<BE>().unwrap();
+                let zpos = file.read_f32::<BE>().unwrap();
+                
+                
+                let em_obj = Emerald {
+                    id: piece_id,
+                    position: Vector {
+                        x: xpos,
+                        y: ypos,
+                        z: zpos
+                    }
+                };
+                match major_id {
+                    0xA => pe_list.push(em_obj),
+                    4 | 7 | 8 => p3_list.push(em_obj),
+                    0 | 2 | 5 => p2_list.push(em_obj),
+                    1 | 3 => p1_list.push(em_obj),
+                    _ => {
+                        let seek_pos = file.stream_position().unwrap();
+                        println!("Position: {seek_pos:X}");
+                        println!("{major_id:X}");
+                    }
+                }
+
+            }
+            StageSpec {
+                slot1_pieces: p1_list,
+                slot2_pieces: p2_list,
+                slot3_pieces: p3_list,
+                enemy_pieces: pe_list,
+                pre_calls: 136
+            }
+        }
     pub fn get_emerald_by_id(&self, id: u16) -> Option<Emerald> {
         for piece in &self.slot1_pieces {
             if piece.id == id {

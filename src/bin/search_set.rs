@@ -2,10 +2,12 @@ use std::env;
 use std::fs::File;
 use std::marker::PhantomData;
 use std::num::ParseIntError;
+use std::str::FromStr;
 use std::u16;
 
 use getopts::Options;
 
+use sa2_piece_gen::hint_lookup::HintLookup;
 use sa2_piece_gen::rng::Rng;
 use sa2_piece_gen::emerald_manager::EmeraldManager;
 use sa2_piece_gen::stage_spec::StageSpec;
@@ -49,6 +51,7 @@ impl<P> Iterator for RngIterator<P>
 
 enum PieceConstraint {
     Want(u16),
+    
     GrabbedId(u16),
     DontCare,
 }
@@ -88,6 +91,7 @@ fn main() {
     opts.optopt("s", "stage", "set stage-spec file", "STAGE");
     opts.optopt("b", "begin", "set initial RNG call amount (default 0)", "RNG_CALLS");
     opts.optopt("e", "end", "set final RNG call amount (default infinity)", "RNG_CALLS");
+    opts.optopt("l", "lookup", "include hints with this PRS file in output", "ehxxxxe.PRS");
     opts.optflag("h", "help", "print this help menu");
 
     let matches = opts.parse(&args[1..]).expect("Could not parse arguments");
@@ -95,6 +99,11 @@ fn main() {
     if matches.opt_present("h") {
         print_usage(&program, opts);
         return;
+    }
+    let mut lookup = None;
+    if matches.opt_present("l"){
+        lookup = Some(HintLookup::from_path(matches.opt_str("l").unwrap()));
+        
     }
 
     let platform = matches.opt_str("p").expect("Option missing: Platform (-p)");
@@ -118,13 +127,13 @@ fn main() {
     let spec: StageSpec = serde_json::from_reader(input).expect("Error reading stage-spec file");
 
     match platform.as_str() {
-        "pc" => piece_sequence::<Pc>(spec, begin, end, p1_id, p2_id, p3_id),
-        "gc" => piece_sequence::<Gc>(spec, begin, end, p1_id, p2_id, p3_id),
+        "pc" => piece_sequence::<Pc>(spec, begin, end, p1_id, p2_id, p3_id, lookup),
+        "gc" => piece_sequence::<Gc>(spec, begin, end, p1_id, p2_id, p3_id, lookup),
         _ => unimplemented!(),
     }
 }
 
-fn piece_sequence<P>(spec: StageSpec, begin: Option<u32>, end: Option<u32>, p1: PieceConstraint, p2: PieceConstraint, p3: PieceConstraint)
+fn piece_sequence<P>(spec: StageSpec, begin: Option<u32>, end: Option<u32>, p1: PieceConstraint, p2: PieceConstraint, p3: PieceConstraint, lookup: Option<HintLookup>)
     where P: Platform,
 {
     let begin = begin.unwrap_or(0);
@@ -197,9 +206,24 @@ fn piece_sequence<P>(spec: StageSpec, begin: Option<u32>, end: Option<u32>, p1: 
         }
 
         if matched {
-            println!("{}: {:04X} {:04X} {:04X}", begin + idx as u32, em.p1.id, em.p2.id, em.p3.id);
-            println!("Rng state: 0x{:08X}", r_copy.get_state());
-            println!();
+            if let Some(ref hints) = lookup {
+                let mut p1_hint = String::from_str("N/A").ok().unwrap();
+                let mut p2_hint = String::from_str("N/A").ok().unwrap();
+                let mut p3_hint = String::from_str("N/A").ok().unwrap();
+                if em.p1.id != 0xFE00 {
+                    p1_hint = hints.lookup_piece(em.p1.id).h1.replace("\n", " ");
+                }
+                if em.p2.id != 0xFE00 {
+                    p2_hint = hints.lookup_piece(em.p2.id).h1.replace("\n", " ");
+                }
+                if em.p3.id != 0xFE00 {
+                    p3_hint = hints.lookup_piece(em.p3.id).h1.replace("\n", " ");
+                }
+                println!("{}\t{:04X}\t{:04X}\t{:04X}\t{}\t{}\t{}", begin + idx as u32, em.p1.id, em.p2.id, em.p3.id, p1_hint, p2_hint, p3_hint); 
+                
+            } else {
+                println!("{},{:04X},{:04X},{:04X}", begin + idx as u32, em.p1.id, em.p2.id, em.p3.id);
+            }
         }
     }
 }
